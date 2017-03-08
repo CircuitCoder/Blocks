@@ -1,4 +1,5 @@
-const size = 40;
+const size = 30;
+const stroke = 2;
 const color = {
   top: 0xEEEEEE,
   right: 0x999999,
@@ -6,9 +7,21 @@ const color = {
   front: 0xDDDDDD,
   back: 0x00AAAA,
   bottom: 0x777777,
+
+  stroke: 0x00000,
+};
+
+const STROKE_ALPHA = 0.5;
+const FILL_ALPHA = 0.3;
+
+const shift = {
+  x: -5,
+  y: -2,
+  z: 0,
 };
 
 const blocks = [
+  // L
   {
     x: 0,
     y: 0,
@@ -37,7 +50,93 @@ const blocks = [
     x: 0,
     y: 3,
     z: -1,
-  }
+  },
+
+  // A
+  {
+    x: 4,
+    y: 0,
+    z: 0,
+  }, {
+    x: 4,
+    y: 1,
+    z: 0,
+  }, {
+    x: 4,
+    y: 2,
+    z: 0,
+  }, {
+    x: 4,
+    y: 3,
+    z: 0,
+  }, {
+    x: 5,
+    y: 3,
+    z: 0,
+  }, {
+    x: 6,
+    y: 0,
+    z: 0,
+  }, {
+    x: 6,
+    y: 1,
+    z: 0,
+  }, {
+    x: 6,
+    y: 2,
+    z: 0,
+  }, {
+    x: 6,
+    y: 3,
+    z: 0,
+  }, {
+    x: 5,
+    y: 1,
+    z: -1,
+  },
+
+  // B
+  {
+    x: 8,
+    y: 0,
+    z: 0,
+  }, {
+    x: 8,
+    y: 1,
+    z: 0,
+  }, {
+    x: 8,
+    y: 2,
+    z: 0,
+  }, {
+    x: 8,
+    y: 3,
+    z: 0,
+  }, {
+    x: 9,
+    y: 3,
+    z: 0,
+  }, {
+    x: 10,
+    y: 0,
+    z: 0,
+  }, {
+    x: 10,
+    y: 1,
+    z: 0,
+  }, {
+    x: 10,
+    y: 3,
+    z: 0,
+  }, {
+    x: 9,
+    y: 2,
+    z: -1,
+  }, {
+    x: 9,
+    y: 0,
+    z: 0,
+  },
 ];
 
 const ROTATION_STALL_RATIO = 10000;
@@ -101,16 +200,19 @@ function bootstrap() {
   const materials = [
     'right', 'left', 'top', 'bottom', 'front', 'back',
   ].map(id => new THREE.MeshBasicMaterial({ color: color[id] }));
+  const fillMat = new THREE.MultiMaterial(materials);
+  fillMat.opacity = FILL_ALPHA;
+  fillMat.transparent = true;
+  const strokeMat = new THREE.LineBasicMaterial({ color: color.stroke, linewidth: stroke });
 
   for(block of blocks) {
     const cubeGeo = new THREE.BoxGeometry(size, size, size);
-    const cubeMat = new THREE.MultiMaterial(materials);
-    const cube = new THREE.Mesh(cubeGeo, cubeMat);
+    const cube = new THREE.Mesh(cubeGeo, fillMat);
 
-    cube.position.x = block.x * size;
-    cube.position.y = block.y * size;
-    cube.position.z = block.z * size;
-
+    cube.position.x = (block.x + shift.x) * size;
+    cube.position.y = (block.y + shift.y) * size;
+    cube.position.z = (block.z + shift.z) * size;
+    
     scene.add(cube);
   }
 
