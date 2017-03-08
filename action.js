@@ -20,9 +20,11 @@ const blocks = [
   }
 ];
 
-const ROTATION_STALL_RATIO = 1000;
+const ROTATION_STALL_RATIO = 10000;
 const CAMERA_DISTANCE = 200;
 const INITIAL_ROTATION = new THREE.Vector3(-0.2 , 0.2, 0).multiplyScalar(ROTATION_STALL_RATIO);
+const FORCE_RATIO = 0.5;
+const DAMPING = 2.5;
 
 const targetRotation = new THREE.Vector3(0, 0, ROTATION_STALL_RATIO).add(INITIAL_ROTATION).normalize();
 const rotationSpeed = new THREE.Vector3(0, 0, 0);
@@ -92,7 +94,7 @@ function bootstrap() {
     scene.add(cube);
   }
 
-  camera.position.z = 100;
+  camera.position.z = CAMERA_DISTANCE; 
 
   setupMouseListener();
 
@@ -101,11 +103,19 @@ function bootstrap() {
 
     if(pendingSizeUpdate) updateSize();
 
-    camera.position.copy(targetRotation);
-    camera.position.multiplyScalar(CAMERA_DISTANCE);
+    camera.position.applyAxisAngle(rotationSpeed, rotationSpeed.length());
+    camera.position.setLength(CAMERA_DISTANCE);
     camera.lookAt(new THREE.Vector3(0, 0, 0));
 
     renderer.render(scene, camera);
+
+    rotationSpeed.add(
+      camera.position.clone().cross(targetRotation).setLength(
+        camera.position.angleTo(targetRotation) * FORCE_RATIO
+      )
+    );
+
+    rotationSpeed.multiplyScalar(1 - rotationSpeed.length() * DAMPING);
   }
 
   render();
