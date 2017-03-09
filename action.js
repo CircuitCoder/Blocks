@@ -5,14 +5,14 @@ const color = {
   right: 0x999999,
   left: 0xCCCCCC,
   front: 0xDDDDDD,
-  back: 0x00AAAA,
+  back: 0xAAAAAA,
   bottom: 0x777777,
 
   stroke: 0x00000,
 };
 
-const STROKE_ALPHA = 0.5;
-const FILL_ALPHA = 0.3;
+const STROKE_OPACITY = 0.2;
+const FILL_OPACITY = 0.8;
 
 const shift = {
   x: -5,
@@ -139,11 +139,11 @@ const blocks = [
   },
 ];
 
-const ROTATION_STALL_RATIO = 10000;
+const ROTATION_STALL_RATIO = 5000;
 const CAMERA_DISTANCE = 200;
 const INITIAL_ROTATION = new THREE.Vector3(-0.2 , 0.2, 0).multiplyScalar(ROTATION_STALL_RATIO);
-const FORCE_RATIO = 0.5;
-const DAMPING = 2.5;
+const FORCE_RATIO = 10;
+const DAMPING = 2 * Math.sqrt(FORCE_RATIO);
 
 const targetRotation = new THREE.Vector3(0, 0, ROTATION_STALL_RATIO).add(INITIAL_ROTATION).normalize();
 const rotationSpeed = new THREE.Vector3(0, 0, 0);
@@ -199,28 +199,46 @@ function bootstrap() {
 
   const materials = [
     'right', 'left', 'top', 'bottom', 'front', 'back',
-  ].map(id => new THREE.MeshBasicMaterial({ color: color[id] }));
+  ].map(id => new THREE.MeshBasicMaterial({
+    color: color[id],
+    opacity: FILL_OPACITY,
+    transparent: true,
+  }));
   const fillMat = new THREE.MultiMaterial(materials);
-  fillMat.opacity = FILL_ALPHA;
+  fillMat.opacity = FILL_OPACITY;
   fillMat.transparent = true;
-  const strokeMat = new THREE.LineBasicMaterial({ color: color.stroke, linewidth: stroke });
+  const strokeMat = new THREE.LineBasicMaterial({
+    color: color.stroke,
+    linewidth: stroke,
+    opacity: STROKE_OPACITY,
+    transparent: true,
+  });
 
   for(block of blocks) {
     const cubeGeo = new THREE.BoxGeometry(size, size, size);
     const cube = new THREE.Mesh(cubeGeo, fillMat);
 
+    const edgesGeo = new THREE.EdgesGeometry(cubeGeo);
+    const edges = new THREE.LineSegments(edgesGeo, strokeMat);
+
     cube.position.x = (block.x + shift.x) * size;
     cube.position.y = (block.y + shift.y) * size;
     cube.position.z = (block.z + shift.z) * size;
+
+    edges.position.copy(cube.position);
     
     scene.add(cube);
+    scene.add(edges);
   }
 
-  camera.position.z = CAMERA_DISTANCE; 
+  camera.position.copy(targetRotation);
+  camera.lookAt(new THREE.Vector3(0, 0, 0));
 
   setupMouseListener();
 
-  function render() {
+  let prevTs = window.performance.now();
+
+  function render(nowTs) {
     requestAnimationFrame(render);
 
     if(pendingSizeUpdate) updateSize();
@@ -231,14 +249,16 @@ function bootstrap() {
 
     renderer.render(scene, camera);
 
+    const force = camera.position.clone().cross(targetRotation).setLength(
+      camera.position.angleTo(targetRotation) * FORCE_RATIO
+    ).add(rotationSpeed.clone().multiplyScalar(DAMPING).negate());
+
     rotationSpeed.add(
-      camera.position.clone().cross(targetRotation).setLength(
-        camera.position.angleTo(targetRotation) * FORCE_RATIO
-      )
+      force.multiplyScalar((nowTs - prevTs) / 1000)
     );
 
-    rotationSpeed.multiplyScalar(1 - rotationSpeed.length() * DAMPING);
+    prevTs = nowTs;
   }
 
-  render();
+  requestAnimationFrame(render);
 }
