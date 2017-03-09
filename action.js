@@ -1,6 +1,6 @@
-const size = 30;
-const stroke = 2;
-const color = {
+const SIZE = 30;
+const STROKE = 2;
+const COLOR = {
   top: 0xEEEEEE,
   right: 0x999999,
   left: 0xCCCCCC,
@@ -14,129 +14,42 @@ const color = {
 const STROKE_OPACITY = 0.2;
 const FILL_OPACITY = 0.8;
 
-const shift = {
-  x: -5,
-  y: -2,
-  z: 0,
-};
+const SHIFT = new THREE.Vector3(-5, -2, 0);
 
-const blocks = [
+const BLOCKS = [
   // L
-  {
-    x: 0,
-    y: 0,
-    z: 0,
-  }, {
-    x: 1,
-    y: 0,
-    z: 0,
-  }, {
-    x: 2,
-    y: 0,
-    z: 1,
-  }, {
-    x: 0,
-    y: 0,
-    z: -1,
-  }, {
-    x: 0,
-    y: 1,
-    z: -1,
-  }, {
-    x: 0,
-    y: 2,
-    z: -1,
-  }, {
-    x: 0,
-    y: 3,
-    z: -1,
-  },
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(1, 0, 0),
+  new THREE.Vector3(2, 0, 1),
+  new THREE.Vector3(0, 0, -1),
+  new THREE.Vector3(0, 1, -1),
+  new THREE.Vector3(0, 2, -1),
+  new THREE.Vector3(0, 3, -1),
 
   // A
-  {
-    x: 4,
-    y: 0,
-    z: 0,
-  }, {
-    x: 4,
-    y: 1,
-    z: 0,
-  }, {
-    x: 4,
-    y: 2,
-    z: 0,
-  }, {
-    x: 4,
-    y: 3,
-    z: 0,
-  }, {
-    x: 5,
-    y: 3,
-    z: 0,
-  }, {
-    x: 6,
-    y: 0,
-    z: 0,
-  }, {
-    x: 6,
-    y: 1,
-    z: 0,
-  }, {
-    x: 6,
-    y: 2,
-    z: 0,
-  }, {
-    x: 6,
-    y: 3,
-    z: 0,
-  }, {
-    x: 5,
-    y: 1,
-    z: -1,
-  },
+
+  new THREE.Vector3(4, 0, 0),
+  new THREE.Vector3(4, 1, 0),
+  new THREE.Vector3(4, 2, 0),
+  new THREE.Vector3(4, 3, 0),
+  new THREE.Vector3(5, 3, 0),
+  new THREE.Vector3(6, 0, 0),
+  new THREE.Vector3(6, 1, 0),
+  new THREE.Vector3(6, 2, 0),
+  new THREE.Vector3(6, 3, 0),
+  new THREE.Vector3(5, 1, -1),
 
   // B
-  {
-    x: 8,
-    y: 0,
-    z: 0,
-  }, {
-    x: 8,
-    y: 1,
-    z: 0,
-  }, {
-    x: 8,
-    y: 2,
-    z: 0,
-  }, {
-    x: 8,
-    y: 3,
-    z: 0,
-  }, {
-    x: 9,
-    y: 3,
-    z: 0,
-  }, {
-    x: 10,
-    y: 0,
-    z: 0,
-  }, {
-    x: 10,
-    y: 1,
-    z: 0,
-  }, {
-    x: 10,
-    y: 3,
-    z: 0,
-  }, {
-    x: 9,
-    y: 2,
-    z: -1,
-  }, {
-    x: 9,
-    y: 0,
-    z: 0,
-  },
+  new THREE.Vector3(8, 0, 0),
+  new THREE.Vector3(8, 1, 0),
+  new THREE.Vector3(8, 2, 0),
+  new THREE.Vector3(8, 3, 0),
+  new THREE.Vector3(9, 3, 0),
+  new THREE.Vector3(10, 0, 0),
+  new THREE.Vector3(10, 1, 0),
+  new THREE.Vector3(10, 3, 0),
+  new THREE.Vector3(9, 2, -1),
+  new THREE.Vector3(9, 0, 0),
 ];
 
 const ROTATION_STALL_RATIO = 5000;
@@ -147,6 +60,11 @@ const DAMPING = 2 * Math.sqrt(FORCE_RATIO);
 
 const targetRotation = new THREE.Vector3(0, 0, ROTATION_STALL_RATIO).add(INITIAL_ROTATION).normalize();
 const rotationSpeed = new THREE.Vector3(0, 0, 0);
+
+const ENTER_FROM = new THREE.Vector3(0, 10, 0);
+const ANIMATION_LENGTH = 200; // ms
+const DELAY_FACTOR = new THREE.Vector3(1, 1, 1).setLength(5); // ms
+const ANIMATION_BEZIER = bezier(.17, .67, .83, .67);
 
 function setupMouseListener() {
   document.onmousemove = event => {
@@ -200,35 +118,44 @@ function bootstrap() {
   const materials = [
     'right', 'left', 'top', 'bottom', 'front', 'back',
   ].map(id => new THREE.MeshBasicMaterial({
-    color: color[id],
-    opacity: FILL_OPACITY,
+    color: COLOR[id],
+    opacity: 0,
     transparent: true,
   }));
   const fillMat = new THREE.MultiMaterial(materials);
-  fillMat.opacity = FILL_OPACITY;
-  fillMat.transparent = true;
   const strokeMat = new THREE.LineBasicMaterial({
-    color: color.stroke,
-    linewidth: stroke,
-    opacity: STROKE_OPACITY,
+    color: COLOR.stroke,
+    linewidth: STROKE,
+    opacity: 0,
     transparent: true,
   });
 
-  for(block of blocks) {
-    const cubeGeo = new THREE.BoxGeometry(size, size, size);
-    const cube = new THREE.Mesh(cubeGeo, fillMat);
+  const cubes = new Set();
+
+  for(block of BLOCKS) {
+    const localFillMat = fillMat.clone();
+    const localStrokeMat = strokeMat.clone();
+
+    const cubeGeo = new THREE.BoxGeometry(SIZE, SIZE, SIZE);
+    const cube = new THREE.Mesh(cubeGeo, localFillMat);
 
     const edgesGeo = new THREE.EdgesGeometry(cubeGeo);
-    const edges = new THREE.LineSegments(edgesGeo, strokeMat);
+    const edges = new THREE.LineSegments(edgesGeo, localStrokeMat);
 
-    cube.position.x = (block.x + shift.x) * size;
-    cube.position.y = (block.y + shift.y) * size;
-    cube.position.z = (block.z + shift.z) * size;
-
+    cube.position.copy(block).add(SHIFT).multiplyScalar(SIZE);
     edges.position.copy(cube.position);
+
+    cube.position.add(ENTER_FROM);
     
     scene.add(cube);
     scene.add(edges);
+
+    cubes.add({
+      edges, cube, block, mat: {
+        fill: localFillMat,
+        stroke: localStrokeMat,
+      }
+    });
   }
 
   camera.position.copy(targetRotation);
@@ -237,6 +164,7 @@ function bootstrap() {
   setupMouseListener();
 
   let prevTs = window.performance.now();
+  const firstTs = prevTs;
 
   function render(nowTs) {
     requestAnimationFrame(render);
@@ -256,6 +184,30 @@ function bootstrap() {
     rotationSpeed.add(
       force.multiplyScalar((nowTs - prevTs) / 1000)
     );
+
+    // Apply animation
+    for(cube of cubes) {
+      const delay = cube.block.clone().multiplyScalar(SIZE).dot(DELAY_FACTOR);
+      let progress = (nowTs - firstTs - delay) / ANIMATION_LENGTH;
+
+      if(progress < 0) continue;
+      if(progress > 1) progress = 1;
+
+      const ratio = progress;
+
+      cube.cube.position.copy(cube.block)
+        .add(SHIFT)
+        .multiplyScalar(SIZE)
+        .add(ENTER_FROM.clone().multiplyScalar(1 - ratio));
+
+      cube.mat.stroke.opacity = ratio * STROKE_OPACITY;
+      for(fm of cube.mat.fill.materials) fm.opacity = ratio * FILL_OPACITY;
+
+      if(progress >= 1) {
+        cubes.delete(cube);
+        continue;
+      }
+    }
 
     prevTs = nowTs;
   }
