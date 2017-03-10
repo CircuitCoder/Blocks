@@ -69,7 +69,9 @@ const ANIMATION_BEZIER = bezier(.17, .67, .83, .67);
 
 const ZERO_EPS = 1e-8;
 
-function setupMouseListener() {
+let skipFrame = false;
+
+function setupListeners() {
   document.onmousemove = event => {
     targetAxis.set(
       (event.x - document.body.offsetWidth / 2),
@@ -77,6 +79,10 @@ function setupMouseListener() {
       ROTATION_STALL_RATIO,
     )
     .normalize();
+  }
+
+  window.onblur = event => {
+    skipFrame = true;
   }
 }
 
@@ -163,7 +169,7 @@ function bootstrap() {
   camera.position.copy(targetAxis);
   camera.lookAt(new THREE.Vector3(0, 0, 0));
 
-  setupMouseListener();
+  setupListeners();
 
   let prevTs = window.performance.now();
   const firstTs = prevTs;
@@ -184,20 +190,24 @@ function bootstrap() {
 
     renderer.render(scene, camera);
 
-    const targetRotation = new THREE.Vector3(0, 0, 1).cross(targetAxis).setLength(
-      new THREE.Vector3(0, 0, 1).angleTo(targetAxis)
-    );
+    if(skipFrame)
+      skipFrame = false;
+    else {
+      const targetRotation = new THREE.Vector3(0, 0, 1).cross(targetAxis).setLength(
+        new THREE.Vector3(0, 0, 1).angleTo(targetAxis)
+      );
 
-    const force = currentRotation.clone().sub(targetRotation)
-      .multiplyScalar(FORCE_RATIO)
-      .negate()
-      .add(rotationSpeed.clone().multiplyScalar(DAMPING).negate());
+      const force = currentRotation.clone().sub(targetRotation)
+        .multiplyScalar(FORCE_RATIO)
+        .negate()
+        .add(rotationSpeed.clone().multiplyScalar(DAMPING).negate());
 
-    rotationSpeed.add(
-      force.multiplyScalar((nowTs - prevTs) / 1000)
-    );
+      rotationSpeed.add(
+        force.multiplyScalar((nowTs - prevTs) / 1000)
+      );
 
-    currentRotation.add(rotationSpeed.clone().multiplyScalar((nowTs - prevTs) / 1000));
+      currentRotation.add(rotationSpeed.clone().multiplyScalar((nowTs - prevTs) / 1000));
+    }
 
     // Apply animation
     for(cube of cubes) {
