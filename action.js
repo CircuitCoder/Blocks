@@ -65,11 +65,14 @@ const rotationSpeed = new THREE.Vector3(0, 0, 0);
 const ENTER_FROM = new THREE.Vector3(0, 10, 0);
 const ANIMATION_LENGTH = 200; // ms
 const DELAY_FACTOR = new THREE.Vector3(1, 1, 1).setLength(5); // ms
-const ANIMATION_BEZIER = bezier(.17, .67, .83, .67);
+const ANIMATION_EASE_OUT = bezier(.17, .67, .83, .67);
 
 const ZERO_EPS = 1e-8;
 
 let skipFrame = false;
+
+let editMode = false;
+let modeSwitchTs = -Infinity;
 
 function setupListeners() {
   document.onmousemove = event => {
@@ -83,6 +86,15 @@ function setupListeners() {
 
   window.onblur = event => {
     skipFrame = true;
+  }
+
+  window.onkeydown = event => {
+    if(event.code === 'KeyE') editMode = !editMode;
+
+    if(editMode) document.getElementById('background').classList.remove('hidden');
+    else document.getElementById('background').classList.add('hidden');
+
+    modeSwitchTs = window.performance.now();
   }
 }
 
@@ -217,7 +229,7 @@ function bootstrap() {
       if(progress < 0) continue;
       if(progress > 1) progress = 1;
 
-      const ratio = progress;
+      const ratio = ANIMATION_EASE_OUT(progress);
 
       cube.cube.position.copy(cube.block)
         .add(SHIFT)
