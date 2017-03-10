@@ -253,7 +253,7 @@ function bootstrap() {
 
     // Apply animation
     for(cube of enteringCubes) {
-      const delay = cube.block.clone().multiplyScalar(SIZE).dot(DELAY_FACTOR);
+      const delay = Math.abs(cube.block.clone().multiplyScalar(SIZE).dot(DELAY_FACTOR));
       let progress = (nowTs - firstTs - delay) / ANIMATION_LENGTH;
 
       if(progress < 0) continue;
