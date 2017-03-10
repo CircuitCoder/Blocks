@@ -8,13 +8,12 @@ const COLOR = {
   back: 0xAAAAAA,
   bottom: 0x777777,
 
-  stroke: 0x00000,
+  stroke: 0x000000,
+  stroke_edit: 0xffffff,
 };
 
 const STROKE_OPACITY = 0.2;
 const FILL_OPACITY = 0.8;
-
-const SHIFT = new THREE.Vector3(-5, -2, 0);
 
 const BLOCKS = [
   // L
@@ -65,16 +64,22 @@ const rotationSpeed = new THREE.Vector3(0, 0, 0);
 const ENTER_FROM = new THREE.Vector3(0, 10, 0);
 const ANIMATION_LENGTH = 200; // ms
 const DELAY_FACTOR = new THREE.Vector3(1, 1, 1).setLength(5); // ms
-const ANIMATION_EASE_OUT = bezier(.17, .67, .83, .67);
+const ANIMATION_EASE_OUT = bezier(0, 0, .58, 1);
+const ANIMATION_EASE_IN = bezier(.42, 0, 1, 1);
+const ANIMATION_EASE = bezier(.17, .67, .83, .67);
 
 const ZERO_EPS = 1e-8;
 
 let skipFrame = false;
 
 let editMode = false;
-let modeSwitchTs = -Infinity;
+let modeSwitch = false;
+let modeSwitchTs = -1;
+let modeSwitchFrom;
 
-function setupListeners() {
+const editFacing = new THREE.Vector3(0, 0, 1);
+
+function setupListeners(removeAll) {
   document.onmousemove = event => {
     targetAxis.set(
       (event.x - document.body.offsetWidth / 2),
@@ -89,13 +94,36 @@ function setupListeners() {
   }
 
   window.onkeydown = event => {
-    if(event.code === 'KeyE') editMode = !editMode;
+    if(event.code === 'KeyE') {
+      modeSwitch = true;
+      editMode = !editMode;
 
-    if(editMode) document.getElementById('background').classList.remove('hidden');
-    else document.getElementById('background').classList.add('hidden');
+      if(editMode) document.getElementById('background').classList.remove('hidden');
+      else document.getElementById('background').classList.add('hidden');
 
-    modeSwitchTs = window.performance.now();
+      modeSwitchTs = -1;
+
+      editFacing.set(0, 0, 1);
+    } else if(event.code === 'KeyD') {
+      editFacing.applyEuler(new THREE.Euler(0, - Math.PI / 2, 0));
+    } else if(event.code === 'KeyA') {
+      editFacing.applyEuler(new THREE.Euler(0, Math.PI / 2, 0));
+    } else if(event.code === 'KeyS') {
+      editFacing.applyEuler(new THREE.Euler(- Math.PI / 2, 0, 0));
+    } else if(event.code === 'KeyW') {
+      editFacing.applyEuler(new THREE.Euler(Math.PI / 2, 0, 0));
+    } else if(event.code === 'KeyZ') {
+      removeAll();
+    }
   }
+}
+
+function colorBetween(from, to, ratio) {
+  const blue = (from % 0x100) * (1 - ratio) + (to % 0x100) * ratio;
+  const green = (Math.floor(from / 0x100) % 0x100) * (1 - ratio) + (Math.floor(to / 0x100) % 0x100) * ratio;
+  const red = (Math.floor(from / 0x10000) % 0x100) * (1 - ratio) + (Math.floor(to / 0x10000) % 0x100) * ratio;
+
+  return Math.floor(red) * 0x10000 + Math.floor(green) * 0x100 + Math.floor(blue);
 }
 
 function bootstrap() {
@@ -107,7 +135,7 @@ function bootstrap() {
     canvas.width / 2,
     canvas.height / 2,
     - canvas.height / 2,
-    1, 1000);
+    1, 100000);
 
   const renderer = new THREE.WebGLRenderer({
     canvas: canvas,
@@ -150,9 +178,9 @@ function bootstrap() {
     transparent: true,
   });
 
-  const cubes = new Set();
+  const cubes = [];
 
-  for(block of BLOCKS) {
+  function addBlock(vec, visible = false) {
     const localFillMat = fillMat.clone();
     const localStrokeMat = strokeMat.clone();
 
@@ -162,26 +190,34 @@ function bootstrap() {
     const edgesGeo = new THREE.EdgesGeometry(cubeGeo);
     const edges = new THREE.LineSegments(edgesGeo, localStrokeMat);
 
-    cube.position.copy(block).add(SHIFT).multiplyScalar(SIZE);
+    cube.position.copy(vec).multiplyScalar(SIZE);
     edges.position.copy(cube.position);
 
-    cube.position.add(ENTER_FROM);
+    if(!visible) cube.position.add(ENTER_FROM);
+    else {
+      for(let mat of localFillMat.materials) mat.opacity = 0.05 * FILL_OPACITY;
+      localStrokeMat.opacity = STROKE_OPACITY;
+      localStrokeMat.color.setHex(COLOR.stroke_edit);
+    }
     
     scene.add(cube);
     scene.add(edges);
 
-    cubes.add({
-      edges, cube, block, mat: {
+    cubes.push({
+      edges, cube, block: vec.clone(), mat: {
         fill: localFillMat,
         stroke: localStrokeMat,
       }
     });
   }
 
+  for(block of BLOCKS)
+    addBlock(block);
+
+  const enteringCubes = new Set(cubes);
+
   camera.position.copy(targetAxis);
   camera.lookAt(new THREE.Vector3(0, 0, 0));
-
-  setupListeners();
 
   let prevTs = window.performance.now();
   const firstTs = prevTs;
@@ -196,7 +232,7 @@ function bootstrap() {
     const rotation = currentRotation.clone().add(INITIAL_ROTATION);
 
     if(rotation.length() > ZERO_EPS)
-      camera.position.applyAxisAngle(rotation, rotation.length());
+      camera.position.applyAxisAngle(rotation.clone().normalize(), rotation.length());
 
     camera.lookAt(new THREE.Vector3(0, 0, 0));
 
@@ -205,8 +241,10 @@ function bootstrap() {
     if(skipFrame)
       skipFrame = false;
     else {
-      const targetRotation = new THREE.Vector3(0, 0, 1).cross(targetAxis).setLength(
-        new THREE.Vector3(0, 0, 1).angleTo(targetAxis)
+      const appliedTargetAxis = editMode ? editFacing : targetAxis;
+
+      const targetRotation = new THREE.Vector3(0, 0, 1).cross(appliedTargetAxis).setLength(
+        new THREE.Vector3(0, 0, 1).angleTo(appliedTargetAxis)
       );
 
       const force = currentRotation.clone().sub(targetRotation)
@@ -222,7 +260,7 @@ function bootstrap() {
     }
 
     // Apply animation
-    for(cube of cubes) {
+    for(cube of enteringCubes) {
       const delay = cube.block.clone().multiplyScalar(SIZE).dot(DELAY_FACTOR);
       let progress = (nowTs - firstTs - delay) / ANIMATION_LENGTH;
 
@@ -232,7 +270,6 @@ function bootstrap() {
       const ratio = ANIMATION_EASE_OUT(progress);
 
       cube.cube.position.copy(cube.block)
-        .add(SHIFT)
         .multiplyScalar(SIZE)
         .add(ENTER_FROM.clone().multiplyScalar(1 - ratio));
 
@@ -240,8 +277,41 @@ function bootstrap() {
       for(fm of cube.mat.fill.materials) fm.opacity = ratio * FILL_OPACITY;
 
       if(progress >= 1) {
-        cubes.delete(cube);
+        enteringCubes.delete(cube);
         continue;
+      }
+    }
+
+
+    if(modeSwitch) {
+      if(modeSwitchTs < 0) {
+        modeSwitchTs = nowTs;
+        modeSwitchFrom = {
+          stroke: cubes[0].mat.stroke.color.getHex(),
+          fill: cubes[0].mat.fill.materials[0].opacity / FILL_OPACITY,
+        };
+      }
+
+      if(nowTs > modeSwitchTs + ANIMATION_LENGTH) modeSwitchTs = nowTs - ANIMATION_LENGTH;
+
+      const progress = (nowTs - modeSwitchTs) / ANIMATION_LENGTH;
+      const from = modeSwitchFrom.stroke;
+      const to = editMode ? COLOR.stroke_edit : COLOR.stroke;
+      const nowColor = colorBetween(from, to, ANIMATION_EASE(progress));
+
+      for(cube of cubes) {
+        cube.mat.stroke.color.setHex(nowColor);
+        const fillRatio = editMode ? ANIMATION_EASE_IN(progress) : ANIMATION_EASE_OUT(progress);
+        const fillTarget = editMode ? 0.05 : 1;
+        const fillContent = FILL_OPACITY * (fillRatio * fillTarget + (1 - fillRatio) * modeSwitchFrom.fill);
+
+        for(mat of cube.mat.fill.materials)
+          mat.opacity = fillContent;
+      }
+
+      if(nowTs === modeSwitchTs + ANIMATION_LENGTH) {
+        modeSwitch = false;
+        modeSwitchTs = -1;
       }
     }
 
@@ -249,4 +319,65 @@ function bootstrap() {
   }
 
   requestAnimationFrame(render);
+
+  // Remove
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  function removeCube(i) {
+    scene.remove(cubes[i].cube);
+    scene.remove(cubes[i].edges);
+    
+    cubes.splice(i, 1);
+
+    if(cubes.length === 0) {
+      addBlock(new THREE.Vector3(0, 0, 0), true);
+
+      console.log(cubes[0].cube.position);
+      return false;
+    }
+
+    return true;
+  }
+
+  window.onmousedown = event => {
+    if(!editMode) return true;
+
+    mouse.x = (event.x / document.body.offsetWidth) * 2 - 1;
+    mouse.y = - (event.y / document.body.offsetHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    const intersects = raycaster.intersectObjects(scene.children);
+
+    if(intersects.length > 0)
+      if(event.button == 0) {
+        const target = intersects[0].object;
+        for(let i = 0; i < cubes.length; ++i)
+          if(cubes[i].cube === target || cubes[i].stroke === target) {
+            removeCube(i);
+            break;
+          }
+      } else {
+        for(const intersect of intersects)
+          if('face' in intersect) {
+            for(let i = 0; i < cubes.length; ++i)
+              if(cubes[i].cube === intersect.object) {
+                addBlock(cubes[i].block.clone().add(intersect.face.normal), true);
+                break;
+              }
+            break;
+          }
+      }
+    return false;
+  }
+
+  window.oncontextmenu = event => {
+    if(editMode) return false;
+  }
+
+  setupListeners(() => {
+    if(!editMode) return;
+    while(removeCube(0)) ;
+  });
 }
