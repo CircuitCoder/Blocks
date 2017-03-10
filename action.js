@@ -346,6 +346,7 @@ function bootstrap() {
         for(let i = 0; i < cubes.length; ++i)
           if(cubes[i].cube === target || cubes[i].stroke === target) {
             removeCube(i);
+            save(cubes.map(cube => cube.block));
             break;
           }
       } else {
