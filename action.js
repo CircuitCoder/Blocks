@@ -52,13 +52,14 @@ const BLOCKS = [
   new THREE.Vector3(9, 0, 0),
 ];
 
-const ROTATION_STALL_RATIO = 5000;
+const ROTATION_STALL_RATIO = 2000;
 const CAMERA_DISTANCE = 200;
-const INITIAL_ROTATION = new THREE.Vector3(-0.2 , 0.2, 0).multiplyScalar(ROTATION_STALL_RATIO);
-const FORCE_RATIO = 10;
+const INITIAL_ROTATION = new THREE.Vector3(-0.4, -0.4, 0);
+const FORCE_RATIO = 50;
 const DAMPING = 2 * Math.sqrt(FORCE_RATIO);
 
-const targetRotation = new THREE.Vector3(0, 0, ROTATION_STALL_RATIO).add(INITIAL_ROTATION).normalize();
+const targetAxis = new THREE.Vector3(0, 0, 0);
+const currentRotation = new THREE.Vector3(0, 0, 0);
 const rotationSpeed = new THREE.Vector3(0, 0, 0);
 
 const ENTER_FROM = new THREE.Vector3(0, 10, 0);
@@ -66,14 +67,15 @@ const ANIMATION_LENGTH = 200; // ms
 const DELAY_FACTOR = new THREE.Vector3(1, 1, 1).setLength(5); // ms
 const ANIMATION_BEZIER = bezier(.17, .67, .83, .67);
 
+const ZERO_EPS = 1e-8;
+
 function setupMouseListener() {
   document.onmousemove = event => {
-    targetRotation.set(
+    targetAxis.set(
       (event.x - document.body.offsetWidth / 2),
       - (event.y - document.body.offsetHeight / 2),
       ROTATION_STALL_RATIO,
     )
-    .add(INITIAL_ROTATION)
     .normalize();
   }
 }
@@ -158,7 +160,7 @@ function bootstrap() {
     });
   }
 
-  camera.position.copy(targetRotation);
+  camera.position.copy(targetAxis);
   camera.lookAt(new THREE.Vector3(0, 0, 0));
 
   setupMouseListener();
@@ -171,19 +173,31 @@ function bootstrap() {
 
     if(pendingSizeUpdate) updateSize();
 
-    camera.position.applyAxisAngle(rotationSpeed, rotationSpeed.length());
-    camera.position.setLength(CAMERA_DISTANCE);
+    camera.position.set(0, 0, CAMERA_DISTANCE);
+
+    const rotation = currentRotation.clone().add(INITIAL_ROTATION);
+
+    if(rotation.length() > ZERO_EPS)
+      camera.position.applyAxisAngle(rotation, rotation.length());
+
     camera.lookAt(new THREE.Vector3(0, 0, 0));
 
     renderer.render(scene, camera);
 
-    const force = camera.position.clone().cross(targetRotation).setLength(
-      camera.position.angleTo(targetRotation) * FORCE_RATIO
-    ).add(rotationSpeed.clone().multiplyScalar(DAMPING).negate());
+    const targetRotation = new THREE.Vector3(0, 0, 1).cross(targetAxis).setLength(
+      new THREE.Vector3(0, 0, 1).angleTo(targetAxis)
+    );
+
+    const force = currentRotation.clone().sub(targetRotation)
+      .multiplyScalar(FORCE_RATIO)
+      .negate()
+      .add(rotationSpeed.clone().multiplyScalar(DAMPING).negate());
 
     rotationSpeed.add(
       force.multiplyScalar((nowTs - prevTs) / 1000)
     );
+
+    currentRotation.add(rotationSpeed.clone().multiplyScalar((nowTs - prevTs) / 1000));
 
     // Apply animation
     for(cube of cubes) {
