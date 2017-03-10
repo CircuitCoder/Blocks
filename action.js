@@ -15,42 +15,6 @@ const COLOR = {
 const STROKE_OPACITY = 0.2;
 const FILL_OPACITY = 0.8;
 
-const BLOCKS = [
-  // L
-  new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(1, 0, 0),
-  new THREE.Vector3(2, 0, 1),
-  new THREE.Vector3(0, 0, -1),
-  new THREE.Vector3(0, 1, -1),
-  new THREE.Vector3(0, 2, -1),
-  new THREE.Vector3(0, 3, -1),
-
-  // A
-
-  new THREE.Vector3(4, 0, 0),
-  new THREE.Vector3(4, 1, 0),
-  new THREE.Vector3(4, 2, 0),
-  new THREE.Vector3(4, 3, 0),
-  new THREE.Vector3(5, 3, 0),
-  new THREE.Vector3(6, 0, 0),
-  new THREE.Vector3(6, 1, 0),
-  new THREE.Vector3(6, 2, 0),
-  new THREE.Vector3(6, 3, 0),
-  new THREE.Vector3(5, 1, -1),
-
-  // B
-  new THREE.Vector3(8, 0, 0),
-  new THREE.Vector3(8, 1, 0),
-  new THREE.Vector3(8, 2, 0),
-  new THREE.Vector3(8, 3, 0),
-  new THREE.Vector3(9, 3, 0),
-  new THREE.Vector3(10, 0, 0),
-  new THREE.Vector3(10, 1, 0),
-  new THREE.Vector3(10, 3, 0),
-  new THREE.Vector3(9, 2, -1),
-  new THREE.Vector3(9, 0, 0),
-];
-
 const ROTATION_STALL_RATIO = 2000;
 const CAMERA_DISTANCE = 200;
 const INITIAL_ROTATION = new THREE.Vector3(-0.4, -0.4, 0);
@@ -67,6 +31,8 @@ const DELAY_FACTOR = new THREE.Vector3(1, 1, 1).setLength(5); // ms
 const ANIMATION_EASE_OUT = bezier(0, 0, .58, 1);
 const ANIMATION_EASE_IN = bezier(.42, 0, 1, 1);
 const ANIMATION_EASE = bezier(.17, .67, .83, .67);
+
+const DEFAULT = [new THREE.Vector3(0, 0, 0)];
 
 const ZERO_EPS = 1e-8;
 
@@ -116,6 +82,30 @@ function setupListeners(removeAll) {
       removeAll();
     }
   }
+}
+
+function parse(str) {
+  if(str[0] === '#') str = str.substr(1);
+  const segs = str.split(';');
+  const result = [];
+
+  for(const seg of segs) {
+    const matches = seg.match(/^(-?\d+),(-?\d+),(-?\d+)$/)
+    if(!matches) return DEFAULT;
+    result.push(new THREE.Vector3(parseInt(matches[1], 10), parseInt(matches[2], 10), parseInt(matches[3], 10)));
+  }
+
+  return result;
+}
+
+function dump(blocks) {
+  return blocks.map(e => `${e.x},${e.y},${e.z}`).join(';');
+}
+
+function save(blocks) {
+  const str = dump(blocks);
+  if(str === '0,0,0') window.location.hash = '';
+  else window.location.hash = str;
 }
 
 function colorBetween(from, to, ratio) {
@@ -211,7 +201,9 @@ function bootstrap() {
     });
   }
 
-  for(block of BLOCKS)
+  const blocks = parse(window.location.hash);
+
+  for(block of blocks)
     addBlock(block);
 
   const enteringCubes = new Set(cubes);
@@ -332,8 +324,6 @@ function bootstrap() {
 
     if(cubes.length === 0) {
       addBlock(new THREE.Vector3(0, 0, 0), true);
-
-      console.log(cubes[0].cube.position);
       return false;
     }
 
@@ -364,6 +354,7 @@ function bootstrap() {
             for(let i = 0; i < cubes.length; ++i)
               if(cubes[i].cube === intersect.object) {
                 addBlock(cubes[i].block.clone().add(intersect.face.normal), true);
+                save(cubes.map(cube => cube.block));
                 break;
               }
             break;
