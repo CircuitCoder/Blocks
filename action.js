@@ -2,8 +2,8 @@ const SIZE = 30;
 const STROKE = 2;
 const COLOR = {
   top: 0xEEEEEE,
-  right: 0x999999,
-  left: 0xCCCCCC,
+  left: 0x999999,
+  right: 0xCCCCCC,
   front: 0xDDDDDD,
   back: 0xAAAAAA,
   bottom: 0x777777,
@@ -17,12 +17,12 @@ const FILL_OPACITY = 0.8;
 
 const ROTATION_STALL_RATIO = 2000;
 const CAMERA_DISTANCE = 200;
-const INITIAL_ROTATION = new THREE.Vector3(-0.4, -0.4, 0);
+const INITIAL_ROTATION = new THREE.Vector3(-0.4, 0.4, 0);
 const FORCE_RATIO = 50;
 const DAMPING = 2 * Math.sqrt(FORCE_RATIO);
 
 const targetAxis = new THREE.Vector3(0, 0, 0);
-const currentRotation = new THREE.Vector3(0, 0, 0);
+const currentRotation = INITIAL_ROTATION.clone();
 const rotationSpeed = new THREE.Vector3(0, 0, 0);
 
 const ENTER_FROM = new THREE.Vector3(0, 10, 0);
@@ -43,7 +43,30 @@ let modeSwitch = false;
 let modeSwitchTs = -1;
 let modeSwitchFrom;
 
-const editFacing = new THREE.Vector3(0, 0, 1);
+let editRotation = 0;
+
+const editX = [
+  1, 1, -1, -1,
+];
+
+const editZ = [
+  1, -1, -1, 1,
+];
+
+function getEditRotation(rot) {
+  const step = ((rot % 4) + 4) % 4;
+  const round = Math.floor((rot + 2) / 4);
+  const target = new THREE.Vector3(editX[step], 1, editZ[step]);
+
+  const angle = new THREE.Vector3(0, 0, 1).angleTo(target);
+  const delta = step > 1 ? round * Math.PI * -2 : round * Math.PI * 2;
+
+  const rotation = new THREE.Vector3(0, 0, 1).cross(target).setLength(
+    angle + delta
+  );
+
+  return rotation;
+}
 
 function setupListeners(removeAll) {
   document.onmousemove = event => {
@@ -69,15 +92,11 @@ function setupListeners(removeAll) {
 
       modeSwitchTs = -1;
 
-      editFacing.set(0, 0, 1);
+      editRotation = 0;
     } else if(event.code === 'KeyD') {
-      editFacing.applyEuler(new THREE.Euler(0, - Math.PI / 2, 0));
+      ++editRotation;
     } else if(event.code === 'KeyA') {
-      editFacing.applyEuler(new THREE.Euler(0, Math.PI / 2, 0));
-    } else if(event.code === 'KeyS') {
-      editFacing.applyEuler(new THREE.Euler(- Math.PI / 2, 0, 0));
-    } else if(event.code === 'KeyW') {
-      editFacing.applyEuler(new THREE.Euler(Math.PI / 2, 0, 0));
+      --editRotation;
     } else if(event.code === 'KeyZ') {
       removeAll();
     }
@@ -221,10 +240,8 @@ function bootstrap() {
 
     camera.position.set(0, 0, CAMERA_DISTANCE);
 
-    const rotation = currentRotation.clone().add(INITIAL_ROTATION);
-
-    if(rotation.length() > ZERO_EPS)
-      camera.position.applyAxisAngle(rotation.clone().normalize(), rotation.length());
+    if(currentRotation.length() > ZERO_EPS)
+      camera.position.applyAxisAngle(currentRotation.clone().normalize(), currentRotation.length());
 
     camera.lookAt(new THREE.Vector3(0, 0, 0));
 
@@ -233,11 +250,13 @@ function bootstrap() {
     if(skipFrame)
       skipFrame = false;
     else {
-      const appliedTargetAxis = editMode ? editFacing : targetAxis;
-
-      const targetRotation = new THREE.Vector3(0, 0, 1).cross(appliedTargetAxis).setLength(
-        new THREE.Vector3(0, 0, 1).angleTo(appliedTargetAxis)
-      );
+      let targetRotation;
+      if(editMode)
+        targetRotation = getEditRotation(editRotation);
+      else
+        targetRotation = new THREE.Vector3(0, 0, 1).cross(targetAxis).setLength(
+          new THREE.Vector3(0, 0, 1).angleTo(targetAxis)
+        ).add(INITIAL_ROTATION);
 
       const force = currentRotation.clone().sub(targetRotation)
         .multiplyScalar(FORCE_RATIO)
